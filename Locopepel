@@ -1,0 +1,1039 @@
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local HttpService = game:GetService("HttpService")
+
+local lp = Players.LocalPlayer
+
+-- ====== FIREBASE ======
+local DB = "https://global-chat-99192-default-rtdb.firebaseio.com"
+local POLL_INTERVAL = 2
+local HISTORY_LIMIT = 30
+
+local ICON = {
+	resize = "rbxassetid://80089990908665",
+	close  = "rbxassetid://103344771690872",
+	send   = "rbxassetid://98712755979169",
+	min    = "rbxassetid://100624819703287",
+	max    = "rbxassetid://130272865000485",
+	move   = "rbxassetid://5172066892",
+	back   = "rbxassetid://109203878224830",
+}
+
+local MAX_LEN       = 150
+local SEND_COOLDOWN = 1
+local MAX_MESSAGES  = 100
+local MIN_W, MIN_H  = 300, 280
+local MINI_W, HEAD_H = 270, 48
+local RADIUS = 14
+
+local DEFAULT_BG_TRANSPARENCY = 0.35
+
+local C = {
+	bg      = Color3.fromRGB(0, 0, 0),
+	header  = Color3.fromRGB(20, 28, 33),
+	mine    = Color3.fromRGB(0, 92, 75),
+	other   = Color3.fromRGB(0, 0, 0),
+	input   = Color3.fromRGB(42, 57, 66),
+	accent  = Color3.fromRGB(0, 168, 132),
+	text    = Color3.fromRGB(233, 237, 239),
+	sub     = Color3.fromRGB(150, 165, 175),
+	stroke  = Color3.fromRGB(60, 78, 88),
+}
+
+local DEFAULT_COLORS = {
+	{ name = "Negro transparente", color = Color3.fromRGB(0, 0, 0), trans = DEFAULT_BG_TRANSPARENCY, default = true },
+	{ name = "Rojo carmesí",   color = Color3.fromRGB(190, 24, 48) },
+	{ name = "Coral",          color = Color3.fromRGB(255, 111, 97) },
+	{ name = "Naranja",        color = Color3.fromRGB(255, 140, 0) },
+	{ name = "Mandarina",      color = Color3.fromRGB(242, 133, 0) },
+	{ name = "Ámbar",          color = Color3.fromRGB(255, 191, 0) },
+	{ name = "Mostaza",        color = Color3.fromRGB(225, 173, 1) },
+	{ name = "Dorado",         color = Color3.fromRGB(212, 175, 55) },
+	{ name = "Miel",           color = Color3.fromRGB(235, 177, 60) },
+	{ name = "Durazno",        color = Color3.fromRGB(255, 180, 140) },
+	{ name = "Salmón",         color = Color3.fromRGB(250, 128, 114) },
+	{ name = "Rosa cálido",    color = Color3.fromRGB(255, 105, 135) },
+	{ name = "Magenta",        color = Color3.fromRGB(200, 40, 110) },
+	{ name = "Terracota",      color = Color3.fromRGB(204, 78, 51) },
+	{ name = "Cobre",          color = Color3.fromRGB(184, 115, 51) },
+	{ name = "Vino",           color = Color3.fromRGB(114, 28, 50) },
+	{ name = "Chocolate",      color = Color3.fromRGB(92, 51, 35) },
+	{ name = "Azul eléctrico", color = Color3.fromRGB(0, 119, 255) },
+	{ name = "Azul marino",    color = Color3.fromRGB(10, 34, 64) },
+	{ name = "Cian brillante",  color = Color3.fromRGB(0, 229, 255) },
+	{ name = "Turquesa",       color = Color3.fromRGB(64, 224, 208) },
+	{ name = "Verde menta",    color = Color3.fromRGB(152, 255, 152) },
+	{ name = "Verde esmeralda",color = Color3.fromRGB(46, 139, 87) },
+	{ name = "Verde oliva",    color = Color3.fromRGB(128, 128, 0) },
+	{ name = "Lima",           color = Color3.fromRGB(50, 205, 50) },
+	{ name = "Morado real",    color = Color3.fromRGB(114, 9, 183) },
+	{ name = "Violeta",        color = Color3.fromRGB(138, 43, 226) },
+	{ name = "Lila",           color = Color3.fromRGB(200, 162, 200) },
+	{ name = "Fucsia",         color = Color3.fromRGB(255, 0, 127) },
+	{ name = "Azul pastel",    color = Color3.fromRGB(174, 219, 255) },
+	{ name = "Amarillo pastel",color = Color3.fromRGB(253, 253, 150) },
+	{ name = "Rosa pastel",    color = Color3.fromRGB(255, 209, 220) },
+	{ name = "Gris plomo",     color = Color3.fromRGB(80, 90, 100) },
+	{ name = "Gris claro",     color = Color3.fromRGB(200, 205, 210) },
+	{ name = "Índigo",         color = Color3.fromRGB(75, 0, 130) },
+	{ name = "Azul acero",     color = Color3.fromRGB(70, 130, 180) },
+	{ name = "Ciruela",        color = Color3.fromRGB(142, 69, 133) },
+}
+
+local CUSTOM_BGS = {
+	{ id = 15492182207,  name = "Auroral Expanse" },
+	{ id = 12514059209,  name = "Cool galaxy" },
+	{ id = 117516106500441, name = "20251115-181430" },
+	{ id = 13036274919,  name = "Rosey" },
+	{ id = 8521812426,   name = "Hot pink pink and white gradient V2" },
+	{ id = 13200190995,  name = "Black Gaming Consoles Aesthetic" },
+	{ id = 117723148487148, name = "Gamer pic" },
+	{ id = 15492172406,  name = "Stellar Aurora Right" },
+	{ id = 77848630738380, name = "fond" },
+}
+
+pcall(function() if _G.MM2_CHAT_DESTROY then _G.MM2_CHAT_DESTROY() end end)
+
+local conns = {}
+local function connect(sig, fn)
+	local c = sig:Connect(fn)
+	table.insert(conns, c)
+	return c
+end
+
+local function corner(o, r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r)
+	c.Parent = o
+	return c
+end
+
+local function pad(o, l, t, r, b)
+	local p = Instance.new("UIPadding")
+	p.PaddingLeft, p.PaddingTop, p.PaddingRight, p.PaddingBottom = UDim.new(0, l), UDim.new(0, t), UDim.new(0, r), UDim.new(0, b)
+	p.Parent = o
+	return p
+end
+
+local function iconButton(parent, image, size, pos)
+	local b = Instance.new("ImageButton")
+	b.Size = size
+	b.Position = pos
+	b.BackgroundTransparency = 1
+	b.Image = image
+	b.ScaleType = Enum.ScaleType.Fit
+	b.AutoButtonColor = true
+	b.ZIndex = 12
+	b.Parent = parent
+	return b
+end
+
+local function textLabel(parent, text, font, size, color, pos, sz)
+	local l = Instance.new("TextLabel")
+	l.BackgroundTransparency = 1
+	l.Text = text
+	l.Font = font
+	l.TextSize = size
+	l.TextColor3 = color
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.Position = pos
+	l.Size = sz
+	l.Parent = parent
+	return l
+end
+
+local guiParent = (gethui and gethui()) or lp:WaitForChild("PlayerGui")
+local old = guiParent:FindFirstChild("MM2_CHAT_MENU")
+if old then old:Destroy() end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "MM2_CHAT_MENU"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.DisplayOrder = 2147483000
+pcall(function() gui.ScreenInsets = Enum.ScreenInsets.None end)
+pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+gui.Parent = guiParent
+
+local function screen()
+	local s = gui.AbsoluteSize
+	if s.X < 10 then s = workspace.CurrentCamera.ViewportSize end
+	return s
+end
+
+local sc = screen()
+local maxSize = Vector2.new(math.min(520, sc.X - 20), math.min(460, sc.Y - 20))
+local maxPos = Vector2.new((sc.X - maxSize.X) / 2, (sc.Y - maxSize.Y) / 2)
+local minPos = Vector2.new(math.max(0, sc.X - MINI_W - 10), 60)
+local minimized = false
+local inFondos = false
+
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Size = UDim2.fromOffset(maxSize.X, maxSize.Y)
+Main.Position = UDim2.fromOffset(maxPos.X, maxPos.Y)
+Main.BackgroundColor3 = C.bg
+Main.BackgroundTransparency = DEFAULT_BG_TRANSPARENCY
+Main.BorderSizePixel = 0
+Main.ClipsDescendants = true
+Main.Active = true
+Main.Parent = gui
+corner(Main, RADIUS)
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = C.stroke
+mainStroke.Thickness = 1.5
+mainStroke.Parent = Main
+
+local BG = Instance.new("ImageLabel")
+BG.Name = "BG"
+BG.Size = UDim2.fromScale(1, 1)
+BG.BackgroundTransparency = 1
+BG.ScaleType = Enum.ScaleType.Crop
+BG.ImageTransparency = 0.3
+BG.Visible = false
+BG.ZIndex = 0
+BG.Parent = Main
+corner(BG, RADIUS)
+
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, HEAD_H)
+Header.BackgroundColor3 = C.header
+Header.BackgroundTransparency = 0.2
+Header.BorderSizePixel = 0
+Header.ZIndex = 10
+Header.Parent = Main
+
+local moveBtn = iconButton(Header, ICON.move, UDim2.fromOffset(28, 28), UDim2.fromOffset(8, 10))
+moveBtn.Visible = false
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -124, 0, 22)
+Title.Position = UDim2.fromOffset(14, 5)
+Title.BackgroundTransparency = 1
+Title.Text = "Chat HUB"
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 15
+Title.TextColor3 = C.text
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.TextTruncate = Enum.TextTruncate.AtEnd
+Title.ZIndex = 11
+Title.Parent = Header
+
+local Sub = Instance.new("TextLabel")
+Sub.Size = UDim2.new(1, -124, 0, 14)
+Sub.Position = UDim2.fromOffset(14, 27)
+Sub.BackgroundTransparency = 1
+Sub.Text = "Chat global"
+Sub.Font = Enum.Font.Gotham
+Sub.TextSize = 11
+Sub.TextColor3 = C.sub
+Sub.TextXAlignment = Enum.TextXAlignment.Left
+Sub.ZIndex = 11
+Sub.Parent = Header
+
+-- Contador de usuarios en línea (barra superior)
+local Online = Instance.new("TextLabel")
+Online.Size = UDim2.new(1, -194, 0, 14)
+Online.Position = UDim2.fromOffset(84, 27)
+Online.BackgroundTransparency = 1
+Online.Text = "conectando..."
+Online.Font = Enum.Font.GothamMedium
+Online.TextSize = 11
+Online.TextColor3 = C.accent
+Online.TextXAlignment = Enum.TextXAlignment.Left
+Online.TextTruncate = Enum.TextTruncate.AtEnd
+Online.ZIndex = 11
+Online.Parent = Header
+Sub:GetPropertyChangedSignal("Visible"):Connect(function()
+	Online.Visible = Sub.Visible
+end)
+
+local closeBtn  = iconButton(Header, ICON.close, UDim2.fromOffset(28, 28), UDim2.new(1, -34, 0, 10))
+local toggleBtn = iconButton(Header, ICON.min,   UDim2.fromOffset(28, 28), UDim2.new(1, -68, 0, 10))
+
+local dotsBtn = Instance.new("TextButton")
+dotsBtn.Size = UDim2.fromOffset(28, 28)
+dotsBtn.Position = UDim2.new(1, -102, 0, 10)
+dotsBtn.BackgroundTransparency = 1
+dotsBtn.Text = ""
+dotsBtn.ZIndex = 12
+dotsBtn.Parent = Header
+for i = 0, 2 do
+	local d = Instance.new("Frame")
+	d.Size = UDim2.fromOffset(4, 4)
+	d.Position = UDim2.new(0.5, -2, 0, 5 + i * 7)
+	d.BackgroundColor3 = C.text
+	d.BorderSizePixel = 0
+	d.ZIndex = 13
+	d.Parent = dotsBtn
+	corner(d, 2)
+end
+
+local Dropdown = Instance.new("Frame")
+Dropdown.Size = UDim2.fromOffset(130, 38)
+Dropdown.Position = UDim2.new(1, -140, 0, HEAD_H + 4)
+Dropdown.BackgroundColor3 = C.header
+Dropdown.BackgroundTransparency = 0.05
+Dropdown.Visible = false
+Dropdown.ZIndex = 40
+Dropdown.Parent = Main
+corner(Dropdown, 10)
+local ddStroke = Instance.new("UIStroke")
+ddStroke.Color = C.stroke
+ddStroke.Parent = Dropdown
+
+local fondosOpt = Instance.new("TextButton")
+fondosOpt.Size = UDim2.new(1, -8, 1, -8)
+fondosOpt.Position = UDim2.fromOffset(4, 4)
+fondosOpt.BackgroundTransparency = 1
+fondosOpt.Text = "Fondos"
+fondosOpt.Font = Enum.Font.GothamMedium
+fondosOpt.TextSize = 14
+fondosOpt.TextColor3 = C.text
+fondosOpt.ZIndex = 41
+fondosOpt.Parent = Dropdown
+
+local Body = Instance.new("Frame")
+Body.Size = UDim2.new(1, 0, 1, -HEAD_H)
+Body.Position = UDim2.fromOffset(0, HEAD_H)
+Body.BackgroundTransparency = 1
+Body.Parent = Main
+
+local INPUT_H = 64
+
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Size = UDim2.new(1, 0, 1, -INPUT_H)
+Scroll.BackgroundTransparency = 1
+Scroll.BorderSizePixel = 0
+Scroll.ScrollBarThickness = 4
+Scroll.ScrollBarImageColor3 = C.stroke
+Scroll.CanvasSize = UDim2.new()
+Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+Scroll.Parent = Body
+pad(Scroll, 10, 8, 10, 8)
+
+local list = Instance.new("UIListLayout")
+list.Padding = UDim.new(0, 2)
+list.SortOrder = Enum.SortOrder.LayoutOrder
+list.Parent = Scroll
+
+local InputBar = Instance.new("Frame")
+InputBar.Size = UDim2.new(1, 0, 0, INPUT_H)
+InputBar.Position = UDim2.new(0, 0, 1, -INPUT_H)
+InputBar.BackgroundColor3 = C.header
+InputBar.BackgroundTransparency = 0.3
+InputBar.BorderSizePixel = 0
+InputBar.Parent = Body
+
+local InputBox = Instance.new("Frame")
+InputBox.Size = UDim2.new(1, -66, 0, 40)
+InputBox.Position = UDim2.fromOffset(10, 8)
+InputBox.BackgroundColor3 = C.input
+InputBox.BackgroundTransparency = 0.15
+InputBox.Parent = InputBar
+corner(InputBox, 20)
+
+local Input = Instance.new("TextBox")
+Input.Size = UDim2.new(1, -24, 1, 0)
+Input.Position = UDim2.fromOffset(12, 0)
+Input.BackgroundTransparency = 1
+Input.Text = ""
+Input.PlaceholderText = "Escribe un mensaje..."
+Input.PlaceholderColor3 = C.sub
+Input.Font = Enum.Font.Gotham
+Input.TextSize = 14
+Input.TextColor3 = C.text
+Input.TextXAlignment = Enum.TextXAlignment.Left
+Input.ClearTextOnFocus = false
+Input.MultiLine = false
+Input.MaxVisibleGraphemes = -1
+pcall(function() Input.MaxTextLength = MAX_LEN end)
+Input.Parent = InputBox
+
+local SendBtn = Instance.new("TextButton")
+SendBtn.Size = UDim2.fromOffset(40, 40)
+SendBtn.Position = UDim2.new(1, -50, 0, 8)
+SendBtn.BackgroundColor3 = C.accent
+SendBtn.Text = ""
+SendBtn.AutoButtonColor = true
+SendBtn.Parent = InputBar
+corner(SendBtn, 20)
+
+local sendIcon = Instance.new("ImageLabel")
+sendIcon.Size = UDim2.fromOffset(22, 22)
+sendIcon.Position = UDim2.new(0.5, -11, 0.5, -11)
+sendIcon.BackgroundTransparency = 1
+sendIcon.Image = ICON.send
+sendIcon.ScaleType = Enum.ScaleType.Fit
+sendIcon.Parent = SendBtn
+
+local resizeBtn = iconButton(Main, ICON.resize, UDim2.fromOffset(14, 14), UDim2.new(1, -16, 1, -16))
+resizeBtn.ZIndex = 50
+resizeBtn.AutoButtonColor = false
+
+local rows, constraints, order = {}, {}, 0
+local lastName, lastMine = nil, nil
+
+local function bubbleMax()
+	return math.max(110, (Main.AbsoluteSize.X - 20) * 0.78)
+end
+
+local function scrollToBottom()
+	task.defer(function()
+		Scroll.CanvasPosition = Vector2.new(0, math.max(0, Scroll.AbsoluteCanvasSize.Y - Scroll.AbsoluteSize.Y))
+	end)
+end
+
+local function nameColor(n)
+	local h = 0
+	for i = 1, #n do h = (h * 31 + n:byte(i)) % 360 end
+	return Color3.fromHSV(h / 360, 0.45, 1)
+end
+
+local function makeLabel(parent, text, font, size, color, orderN)
+	local l = Instance.new("TextLabel")
+	l.AutomaticSize = Enum.AutomaticSize.XY
+	l.Size = UDim2.fromOffset(0, 0)
+	l.BackgroundTransparency = 1
+	l.Text = text
+	l.Font = font
+	l.TextSize = size
+	l.TextColor3 = color
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.TextYAlignment = Enum.TextYAlignment.Top
+	l.TextWrapped = true
+	l.RichText = false
+	l.LayoutOrder = orderN
+	l.Parent = parent
+	local uc = Instance.new("UISizeConstraint")
+	uc.MaxSize = Vector2.new(bubbleMax() - 20, math.huge)
+	uc.Parent = l
+	table.insert(constraints, uc)
+	return l
+end
+
+local function addMessage(name, text, mine, system)
+	order += 1
+	local grouped = (not system) and lastName == name and lastMine == mine
+
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, 0)
+	row.AutomaticSize = Enum.AutomaticSize.Y
+	row.BackgroundTransparency = 1
+	row.LayoutOrder = order
+	row.Parent = Scroll
+	if not grouped and #rows > 0 then
+		pad(row, 0, 6, 0, 0)
+	end
+
+	local bubble = Instance.new("Frame")
+	bubble.AutomaticSize = Enum.AutomaticSize.XY
+	bubble.Size = UDim2.fromOffset(0, 0)
+	bubble.Parent = row
+	corner(bubble, 10)
+	pad(bubble, 10, 6, 10, 6)
+
+	local lay = Instance.new("UIListLayout")
+	lay.Padding = UDim.new(0, 2)
+	lay.SortOrder = Enum.SortOrder.LayoutOrder
+	lay.Parent = bubble
+
+	if system then
+		bubble.AnchorPoint = Vector2.new(0.5, 0)
+		bubble.Position = UDim2.fromScale(0.5, 0)
+		bubble.BackgroundColor3 = C.input
+		bubble.BackgroundTransparency = 0.2
+		makeLabel(bubble, text, Enum.Font.Gotham, 12, C.sub, 2)
+		lastName, lastMine = nil, nil
+	else
+		bubble.AnchorPoint = Vector2.new(mine and 1 or 0, 0)
+		bubble.Position = UDim2.fromScale(mine and 1 or 0, 0)
+		if mine then
+			bubble.BackgroundColor3 = C.mine
+			bubble.BackgroundTransparency = 0.1
+		else
+			bubble.BackgroundColor3 = C.other
+			bubble.BackgroundTransparency = 0.1
+		end
+		if not grouped then
+			makeLabel(bubble, name, Enum.Font.GothamBold, 12, nameColor(name), 1)
+		end
+		makeLabel(bubble, text, Enum.Font.Gotham, 14, C.text, 2)
+		makeLabel(bubble, os.date("%H:%M"), Enum.Font.Gotham, 10, C.sub, 3)
+		lastName, lastMine = name, mine
+	end
+
+	table.insert(rows, row)
+	if #rows > MAX_MESSAGES then
+		local r = table.remove(rows, 1)
+		r:Destroy()
+	end
+	scrollToBottom()
+end
+
+local function refreshConstraints()
+	local m = bubbleMax() - 20
+	for i = #constraints, 1, -1 do
+		local uc = constraints[i]
+		if uc.Parent then
+			uc.MaxSize = Vector2.new(m, math.huge)
+		else
+			table.remove(constraints, i)
+		end
+	end
+	scrollToBottom()
+end
+
+local Chat = { AddMessage = addMessage, OnSend = nil, BotEnabled = false }
+_G.MM2_CHAT = Chat
+
+local lastSend = 0
+local function send()
+	task.wait(0.05)
+	local msg = Input.Text:match("^%s*(.-)%s*$")
+	if not msg or #msg == 0 then return end
+	if os.clock() - lastSend < SEND_COOLDOWN then return end
+	lastSend = os.clock()
+	Input.Text = ""
+	addMessage(lp.DisplayName, msg, true)
+	if Chat.OnSend then task.spawn(pcall, Chat.OnSend, msg) end
+	if Chat.BotEnabled then
+		task.delay(0.7, function()
+			if gui and gui.Parent then
+				addMessage("Bot", "test funcionando", false)
+			end
+		end)
+	end
+end
+
+connect(SendBtn.MouseButton1Click, send)
+connect(Input.FocusLost, function(enter)
+	if enter then
+		send()
+		task.defer(function() Input:CaptureFocus() end)
+	end
+end)
+
+local FPage = Instance.new("Frame")
+FPage.Size = UDim2.new(1, 0, 1, -HEAD_H)
+FPage.Position = UDim2.fromOffset(0, HEAD_H)
+FPage.BackgroundTransparency = 1
+FPage.Visible = false
+FPage.Parent = Main
+
+local FTop = Instance.new("Frame")
+FTop.Size = UDim2.new(1, 0, 0, 40)
+FTop.BackgroundTransparency = 1
+FTop.Parent = FPage
+
+local backBtn = iconButton(FTop, ICON.back, UDim2.fromOffset(28, 28), UDim2.fromOffset(10, 6))
+textLabel(FTop, "Fondos", Enum.Font.GothamBold, 15, C.text, UDim2.fromOffset(46, 0), UDim2.new(1, -56, 1, 0))
+
+local Tabs = Instance.new("Frame")
+Tabs.Size = UDim2.new(1, -20, 0, 32)
+Tabs.Position = UDim2.fromOffset(10, 40)
+Tabs.BackgroundColor3 = C.header
+Tabs.BackgroundTransparency = 0.3
+Tabs.Parent = FPage
+corner(Tabs, 16)
+
+local function makeTab(text, x)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0.5, -4, 1, -6)
+	b.Position = UDim2.new(x, x == 0 and 3 or 1, 0, 3)
+	b.BackgroundColor3 = C.accent
+	b.BackgroundTransparency = 1
+	b.Text = text
+	b.Font = Enum.Font.GothamMedium
+	b.TextSize = 13
+	b.TextColor3 = C.text
+	b.AutoButtonColor = false
+	b.Parent = Tabs
+	corner(b, 13)
+	return b
+end
+local tabDefault = makeTab("Predeterminados", 0)
+local tabCustom = makeTab("Personalizado", 0.5)
+
+local CONTENT_TOP, BAR_H = 78, 56
+
+local function makeGridScroll()
+	local s = Instance.new("ScrollingFrame")
+	s.Size = UDim2.new(1, 0, 1, -(CONTENT_TOP + BAR_H))
+	s.Position = UDim2.fromOffset(0, CONTENT_TOP)
+	s.BackgroundTransparency = 1
+	s.BorderSizePixel = 0
+	s.ScrollBarThickness = 4
+	s.ScrollBarImageColor3 = C.stroke
+	s.CanvasSize = UDim2.new()
+	s.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	s.ScrollingDirection = Enum.ScrollingDirection.Y
+	s.Visible = false
+	s.Parent = FPage
+	pad(s, 8, 6, 8, 6)
+	local g = Instance.new("UIGridLayout")
+	g.CellSize = UDim2.fromOffset(132, 150)
+	g.CellPadding = UDim2.fromOffset(8, 8)
+	g.SortOrder = Enum.SortOrder.LayoutOrder
+	g.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	g.Parent = s
+	return s
+end
+local pageDefault = makeGridScroll()
+local pageCustom = makeGridScroll()
+
+local FBar = Instance.new("Frame")
+FBar.Size = UDim2.new(1, 0, 0, BAR_H)
+FBar.Position = UDim2.new(0, 0, 1, -BAR_H)
+FBar.BackgroundColor3 = C.header
+FBar.BackgroundTransparency = 0.3
+FBar.BorderSizePixel = 0
+FBar.Parent = FPage
+
+local selLabel = textLabel(FBar, "Selecciona un fondo", Enum.Font.Gotham, 12, C.sub, UDim2.fromOffset(12, 0), UDim2.new(1, -130, 1, 0))
+selLabel.TextTruncate = Enum.TextTruncate.AtEnd
+
+local applyBtn = Instance.new("TextButton")
+applyBtn.Size = UDim2.fromOffset(100, 36)
+applyBtn.Position = UDim2.new(1, -110, 0.5, -18)
+applyBtn.BackgroundColor3 = C.accent
+applyBtn.Text = "Proyectar"
+applyBtn.Font = Enum.Font.GothamBold
+applyBtn.TextSize = 14
+applyBtn.TextColor3 = Color3.new(1, 1, 1)
+applyBtn.Visible = false
+applyBtn.Parent = FBar
+corner(applyBtn, 18)
+
+local cards = {}
+local selected = nil
+local imgCache = {}
+
+local function resolveImage(id, cb)
+	task.spawn(function()
+		local ok, objs = pcall(function() return game:GetObjects("rbxassetid://" .. id) end)
+		if ok and objs and objs[1] then
+			local o = objs[1]
+			local tex
+			if o:IsA("Decal") or o:IsA("Texture") then
+				tex = o.Texture
+			else
+				local d = o:FindFirstChildWhichIsA("Decal", true)
+				tex = d and d.Texture
+			end
+			if tex and tex ~= "" then
+				imgCache[id] = tex
+				cb(tex)
+			end
+		end
+	end)
+end
+
+local function selectCard(data)
+	selected = data
+	for _, c in ipairs(cards) do
+		c.stroke.Enabled = (c.data == data)
+	end
+	selLabel.Text = data.name
+	selLabel.TextColor3 = C.text
+	applyBtn.Visible = true
+	applyBtn.Text = "Proyectar"
+end
+
+local function applyBackground(data)
+	if data.color then
+		BG.Visible = false
+		Main.BackgroundColor3 = data.color
+		Main.BackgroundTransparency = data.trans or 0.2
+	else
+		BG.Image = imgCache[data.id] or ("rbxassetid://" .. data.id)
+		BG.Visible = true
+		Main.BackgroundColor3 = Color3.new(0, 0, 0)
+		Main.BackgroundTransparency = 0
+	end
+end
+
+connect(applyBtn.MouseButton1Click, function()
+	if not selected then return end
+	applyBackground(selected)
+	applyBtn.Text = "Aplicado"
+	task.delay(1, function()
+		if applyBtn and applyBtn.Parent and applyBtn.Text == "Aplicado" then applyBtn.Text = "Proyectar" end
+	end)
+end)
+
+local function makeCard(parent, data, n)
+	local card = Instance.new("Frame")
+	card.LayoutOrder = n
+	card.BackgroundColor3 = C.header
+	card.BackgroundTransparency = 0.25
+	card.Parent = parent
+	corner(card, 10)
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = C.accent
+	stroke.Thickness = 2
+	stroke.Enabled = false
+	stroke.Parent = card
+
+	local prev
+	if data.color then
+		prev = Instance.new("Frame")
+		prev.BackgroundColor3 = data.color
+		prev.BackgroundTransparency = data.default and DEFAULT_BG_TRANSPARENCY or 0
+		prev.BorderSizePixel = 0
+		if data.default then prev.BackgroundTransparency = DEFAULT_BG_TRANSPARENCY end
+	else
+		prev = Instance.new("ImageLabel")
+		prev.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+		prev.BorderSizePixel = 0
+		prev.ScaleType = Enum.ScaleType.Crop
+		prev.Image = "rbxassetid://" .. data.id
+		resolveImage(data.id, function(tex)
+			if prev and prev.Parent then prev.Image = tex end
+		end)
+	end
+	prev.Size = UDim2.new(1, -12, 0, 84)
+	prev.Position = UDim2.fromOffset(6, 6)
+	prev.Parent = card
+	corner(prev, 8)
+
+	local nameL = textLabel(card, data.name, Enum.Font.GothamBold, 12, C.text, UDim2.fromOffset(8, 94), UDim2.new(1, -16, 0, 30))
+	nameL.TextWrapped = true
+	nameL.TextYAlignment = Enum.TextYAlignment.Top
+	nameL.TextTruncate = Enum.TextTruncate.AtEnd
+
+	local credL = textLabel(card, "por " .. (data.creator or "..."), Enum.Font.Gotham, 11, C.sub, UDim2.fromOffset(8, 128), UDim2.new(1, -16, 0, 16))
+	credL.TextTruncate = Enum.TextTruncate.AtEnd
+
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.fromScale(1, 1)
+	btn.BackgroundTransparency = 1
+	btn.Text = ""
+	btn.ZIndex = 5
+	btn.Parent = card
+	connect(btn.MouseButton1Click, function() selectCard(data) end)
+
+	table.insert(cards, { data = data, stroke = stroke })
+	data.nameLabel, data.creatorLabel = nameL, credL
+end
+
+for i, d in ipairs(DEFAULT_COLORS) do
+	d.creator = "HUB"
+	makeCard(pageDefault, d, i)
+end
+
+for i, d in ipairs(CUSTOM_BGS) do
+	d.creator = "..."
+	makeCard(pageCustom, d, i)
+	task.spawn(function()
+		local ok, info = pcall(function() return MarketplaceService:GetProductInfo(d.id) end)
+		if ok and info then
+			if info.Name then
+				d.name = info.Name
+				if d.nameLabel and d.nameLabel.Parent then d.nameLabel.Text = info.Name end
+			end
+			local cn = info.Creator and info.Creator.Name
+			if cn then
+				d.creator = cn
+				if d.creatorLabel and d.creatorLabel.Parent then d.creatorLabel.Text = "por " .. cn end
+			end
+		else
+			if d.creatorLabel and d.creatorLabel.Parent then d.creatorLabel.Text = "por desconocido" end
+		end
+	end)
+end
+
+local function setTab(n)
+	pageDefault.Visible = (n == 1)
+	pageCustom.Visible = (n == 2)
+	tabDefault.BackgroundTransparency = (n == 1) and 0 or 1
+	tabCustom.BackgroundTransparency = (n == 2) and 0 or 1
+end
+connect(tabDefault.MouseButton1Click, function() setTab(1) end)
+connect(tabCustom.MouseButton1Click, function() setTab(2) end)
+setTab(1)
+
+local function showFondos(v)
+	inFondos = v
+	Dropdown.Visible = false
+	Body.Visible = (not v) and (not minimized)
+	FPage.Visible = v and (not minimized)
+	Sub.Text = v and "Fondos" or "Chat global"
+	if not v then scrollToBottom() end
+end
+
+connect(dotsBtn.MouseButton1Click, function()
+	if minimized then return end
+	Dropdown.Visible = not Dropdown.Visible
+end)
+connect(fondosOpt.MouseButton1Click, function() showFondos(true) end)
+connect(backBtn.MouseButton1Click, function() showFondos(false) end)
+
+local ti = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local function clampPos(p, size)
+	local s = screen()
+	return Vector2.new(math.clamp(p.X, 0, math.max(0, s.X - size.X)), math.clamp(p.Y, 0, math.max(0, s.Y - size.Y)))
+end
+
+local function setMinimized(v)
+	minimized = v
+	Input:ReleaseFocus()
+	Dropdown.Visible = false
+	if v then
+		maxSize = Main.AbsoluteSize
+		maxPos = Main.AbsolutePosition
+		minPos = clampPos(minPos, Vector2.new(MINI_W, HEAD_H))
+		Body.Visible = false
+		FPage.Visible = false
+		resizeBtn.Visible = false
+		dotsBtn.Visible = false
+		moveBtn.Visible = true
+		Sub.Visible = false
+		Title.Position = UDim2.fromOffset(42, 13)
+		Title.Size = UDim2.new(1, -120, 0, 22)
+		toggleBtn.Image = ICON.max
+		TweenService:Create(Main, ti, {
+			Size = UDim2.fromOffset(MINI_W, HEAD_H),
+			Position = UDim2.fromOffset(minPos.X, minPos.Y),
+		}):Play()
+	else
+		minPos = Main.AbsolutePosition
+		maxPos = clampPos(maxPos, maxSize)
+		moveBtn.Visible = false
+		dotsBtn.Visible = true
+		Sub.Visible = true
+		Title.Position = UDim2.fromOffset(14, 5)
+		Title.Size = UDim2.new(1, -124, 0, 22)
+		toggleBtn.Image = ICON.min
+		Body.Visible = not inFondos
+		FPage.Visible = inFondos
+		resizeBtn.Visible = true
+		local t = TweenService:Create(Main, ti, {
+			Size = UDim2.fromOffset(maxSize.X, maxSize.Y),
+			Position = UDim2.fromOffset(maxPos.X, maxPos.Y),
+		})
+		t:Play()
+		t.Completed:Once(function()
+			refreshConstraints()
+		end)
+	end
+end
+
+connect(toggleBtn.MouseButton1Click, function() setMinimized(not minimized) end)
+
+local function destroy()
+	for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+	conns = {}
+	if _G.MM2_CHAT == Chat then _G.MM2_CHAT = nil end
+	_G.MM2_CHAT_DESTROY = nil
+	if gui then gui:Destroy() end
+end
+_G.MM2_CHAT_DESTROY = destroy
+connect(closeBtn.MouseButton1Click, destroy)
+
+local moving, moveStart, moveOrigin = false, nil, nil
+
+connect(Header.InputBegan, function(i)
+	if minimized then return end
+	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+		moving = true
+		moveStart = Vector2.new(i.Position.X, i.Position.Y)
+		moveOrigin = Main.AbsolutePosition
+		connect(i.Changed, function()
+			if i.UserInputState == Enum.UserInputState.End then moving = false end
+		end)
+	end
+end)
+
+connect(moveBtn.InputBegan, function(i)
+	if not minimized then return end
+	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+		moving = true
+		moveStart = Vector2.new(i.Position.X, i.Position.Y)
+		moveOrigin = Main.AbsolutePosition
+		connect(i.Changed, function()
+			if i.UserInputState == Enum.UserInputState.End then moving = false end
+		end)
+	end
+end)
+
+local resizing, resStart, resOrigin = false, nil, nil
+
+connect(resizeBtn.InputBegan, function(i)
+	if minimized then return end
+	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+		resizing = true
+		resStart = Vector2.new(i.Position.X, i.Position.Y)
+		resOrigin = Main.AbsoluteSize
+		connect(i.Changed, function()
+			if i.UserInputState == Enum.UserInputState.End then resizing = false end
+		end)
+	end
+end)
+
+connect(UIS.InputChanged, function(i)
+	if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
+	local cur = Vector2.new(i.Position.X, i.Position.Y)
+
+	if moving then
+		local currentSize = minimized and Vector2.new(MINI_W, HEAD_H) or Main.AbsoluteSize
+		local p = clampPos(moveOrigin + (cur - moveStart), currentSize)
+		if minimized then minPos = p else maxPos = p end
+		Main.Position = UDim2.fromOffset(p.X, p.Y)
+	elseif resizing and not minimized then
+		local s = screen()
+		local pos = Main.AbsolutePosition
+		local nw = math.clamp(resOrigin.X + (cur.X - resStart.X), MIN_W, math.max(MIN_W, s.X - pos.X))
+		local nh = math.clamp(resOrigin.Y + (cur.Y - resStart.Y), MIN_H, math.max(MIN_H, s.Y - pos.Y))
+		maxSize = Vector2.new(nw, nh)
+		Main.Size = UDim2.fromOffset(nw, nh)
+		refreshConstraints()
+	end
+end)
+
+addMessage("", "Bienvenido al chat 💬", false, true)
+
+-- ====================================================
+-- CONEXIÓN GLOBAL (Firebase Realtime Database REST)
+-- ====================================================
+local req = (syn and syn.request) or (http and http.request) or http_request or request
+local myId = tostring(lp.UserId)
+
+local function call(method, url, body)
+	if not req then return nil end
+	local ok, r = pcall(req, {
+		Url = DB .. url,
+		Method = method,
+		Headers = { ["Content-Type"] = "application/json" },
+		Body = body and HttpService:JSONEncode(body) or nil,
+	})
+	if ok and r and r.StatusCode == 200 then
+		if r.Body == "null" then return {} end
+		local ok2, data = pcall(function() return HttpService:JSONDecode(r.Body) end)
+		if ok2 then return data end
+	end
+	return nil
+end
+
+if not req then
+	addMessage("", "Tu executor no soporta requests HTTP: el chat global no funcionará.", false, true)
+else
+	Chat.BotEnabled = false
+
+	Chat.OnSend = function(msg)
+		local res = call("POST", "/messages.json", {
+			name = string.sub(lp.DisplayName, 1, 30),
+			uid = myId,
+			text = string.sub(msg, 1, MAX_LEN),
+			ts = { [".sv"] = "timestamp" },
+		})
+		if not res and gui and gui.Parent then
+			addMessage("", "No se pudo enviar el mensaje.", false, true)
+		end
+	end
+
+	task.spawn(function()
+		local lastTs = 0
+		local first = true
+		while gui and gui.Parent do
+			local url
+			if first then
+				url = '/messages.json?orderBy=%22ts%22&limitToLast=' .. HISTORY_LIMIT
+			else
+				url = '/messages.json?orderBy=%22ts%22&startAt=' .. (lastTs + 1)
+			end
+			local data = call("GET", url)
+			if type(data) == "table" then
+				local msgs = {}
+				for _, m in pairs(data) do
+					if type(m) == "table" and type(m.ts) == "number" then
+						table.insert(msgs, m)
+					end
+				end
+				table.sort(msgs, function(a, b) return a.ts < b.ts end)
+				for _, m in ipairs(msgs) do
+					lastTs = math.max(lastTs, m.ts)
+					if gui and gui.Parent and (m.uid ~= myId or first) then
+						addMessage(tostring(m.name or "?"), tostring(m.text or ""), m.uid == myId)
+					end
+				end
+				first = false
+			elseif first and data == nil then
+				-- sin respuesta aún; reintenta
+			end
+			task.wait(POLL_INTERVAL)
+		end
+	end)
+
+	-- ====================================================
+	-- USUARIOS EN LÍNEA
+	-- ====================================================
+	local PRESENCE_BEAT    = 5       -- latido propio cada 5 s
+	local PRESENCE_TIMEOUT = 15000   -- ms sin latido = desconectado
+	local COUNT_INTERVAL   = 0.25    -- el contador se actualiza cada 0.25 s
+
+	local serverOffset = nil
+	local onlineCount = nil
+
+	local function renderOnline()
+		if not onlineCount then return end
+		local n = onlineCount
+		local full = (n == 1) and "hay 1 usuario en línea en el chat"
+			or ("hay " .. n .. " usuarios en línea en el chat")
+		local short = (n == 1) and "1 en línea" or (n .. " en línea")
+		local txt = (Online.AbsoluteSize.X >= 200) and full or short
+		if Online.Text ~= txt then Online.Text = txt end
+	end
+
+	local function beat()
+		local ok, r = pcall(req, {
+			Url = DB .. "/presence/" .. myId .. ".json",
+			Method = "PUT",
+			Headers = { ["Content-Type"] = "application/json" },
+			Body = HttpService:JSONEncode({ [".sv"] = "timestamp" }),
+		})
+		if ok and type(r) == "table" and r.StatusCode == 200 then
+			local ts = tonumber(r.Body)
+			if ts then
+				serverOffset = ts - os.time() * 1000
+			elseif not serverOffset then
+				serverOffset = 0
+			end
+		end
+	end
+
+	task.spawn(function()
+		while gui and gui.Parent do
+			beat()
+			task.wait(PRESENCE_BEAT)
+		end
+	end)
+
+	task.spawn(function()
+		while gui and gui.Parent do
+			if serverOffset then
+				local cutoff = os.time() * 1000 + serverOffset - PRESENCE_TIMEOUT
+				local data = call("GET", '/presence.json?orderBy=%22%24value%22&startAt=' .. string.format("%d", cutoff))
+				if type(data) == "table" then
+					local n = 0
+					for _ in pairs(data) do n += 1 end
+					onlineCount = math.max(n, 1)
+				end
+			end
+			renderOnline()
+			task.wait(COUNT_INTERVAL)
+		end
+	end)
+
+	-- al cerrar el chat, te quita de la lista de conectados
+	gui.Destroying:Connect(function()
+		task.spawn(call, "DELETE", "/presence/" .. myId .. ".json")
+	end)
+end
